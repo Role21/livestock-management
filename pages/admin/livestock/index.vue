@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import BaseDrawer from '@/components/ui/BaseDrawer.vue'
 import LivestockForm from '@/components/forms/LivestockForm.vue'
+import { useCookie } from '#app'
+
 
 const isDrawerOpen = ref(false)
 
@@ -13,18 +15,15 @@ function closeDrawer() {
   isDrawerOpen.value = false
 }
 
-async function handleFormSubmit(data) {
-  try {
-    const adminToken = localStorage.getItem('admin_token') // or use useCookie/useStorage if you're using Nuxt composables
+const token = useCookie('admin_token') // ✅ get the cookie set at login
 
-    await $fetch('/api/livestock', {
-      method: 'POST',
-      body: data,
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-    })
-
+await $fetch('/api/livestock', {
+  method: 'POST',
+  body: data,
+  headers: {
+    Authorization: `Bearer ${token.value}`, // ✅ send real token
+  },
+})
     showToast('Livestock added successfully!', 'success')
     closeDrawer()
     // TODO: refresh table data here
@@ -33,7 +32,6 @@ async function handleFormSubmit(data) {
     showToast('Failed to add livestock.', 'error')
   }
 }
-
 
 </script>
 

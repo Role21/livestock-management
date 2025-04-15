@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken'
 export default defineEventHandler(async (event) => {
   const token = getHeader(event, 'authorization')?.replace('Bearer ', '')
 
+  console.log('AUTH TOKEN RECEIVED:', token)
+
   if (!token) {
     throw createError({
       statusCode: 401,

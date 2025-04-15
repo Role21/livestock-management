@@ -1,42 +1,34 @@
-import { readBody, createError } from 'h3'
+import { defineEventHandler, readBody, setCookie } from 'h3'
 import jwt from 'jsonwebtoken'
-import { db } from '~/server/lib/db.cjs'
+import db from '~/server/lib/db.cjs'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const { email, password } = body
 
-  if (!email || !password) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Email and password are required',
-    })
+  // Validate admin from DB
+  const admin = await db('admins').where({ email }).first()
+
+  if (!admin) {
+    return createError({ statusCode: 401, statusMessage: 'Invalid email' })
   }
 
-  // Check if admin exists
-  const [rows] = await db.query('SELECT * FROM admins WHERE email = ?', [email])
-  const admin = rows[0]
-
-  if (!admin || admin.password !== password) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'Invalid email or password',
-    })
+  const passwordMatches = await bcrypt.compare(password, admin.password)
+  if (!passwordMatches) {
+    return createError({ statusCode: 401, statusMessage: 'Invalid password' })
   }
 
-  // Generate JWT
-  const token = jwt.sign(
-    { id: admin.id, email: admin.email, role: 'admin' },
-    useRuntimeConfig().JWT_SECRET,
-    { expiresIn: '7d' }
-  )
+  // Generate JWT token
+  const token = jwt.sign({ id: admin.id, email: admin.email }, process.env.JWT_SECRET, {
+    expiresIn: '7d',
+  })
 
-  return {
-    token,
-    admin: {
-      id: admin.id,
-      name: admin.name,
-      email: admin.email,
-    },
-  }
+  // ✅ Store it as a cookie for client
+  setCookie(event, 'admin_token', token, {
+    httpOnly: true,
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  })
+
+  return { success: true, message: 'Login successful' }
 })
