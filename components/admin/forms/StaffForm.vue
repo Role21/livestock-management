@@ -2,13 +2,15 @@
 import { ref, onMounted, computed } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import * as yup from 'yup'
-import { useFetch, useRouter } from '#app'
+import { useToast } from 'vue-toastification'
 
 const props = defineProps({
   initialData: Object,
 })
 
 const emit = defineEmits(['success', 'cancel'])
+
+const toast = useToast()
 
 const isEditMode = computed(() => !!props.initialData)
 
@@ -27,14 +29,14 @@ const schema = yup.object({
     : yup.string().required('Password is required').min(6),
 })
 
-const { handleSubmit, resetForm } = useForm({
+const { handleSubmit, resetForm, setValues } = useForm({
   validationSchema: schema,
   initialValues: {
-    first_name: props.initialData?.first_name || '',
-    last_name: props.initialData?.last_name || '',
-    email: props.initialData?.email || '',
-    phone: props.initialData?.phone || '',
-    role_id: props.initialData?.role_id || '',
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    role_id: '',
     password: '',
   },
 })
@@ -46,38 +48,53 @@ const { value: phone, errorMessage: phoneError } = useField('phone')
 const { value: role_id, errorMessage: roleError } = useField('role_id')
 const { value: password, errorMessage: passwordError } = useField('password')
 
+onMounted(async () => {
+  await fetchRoles()
+  if (isEditMode.value && props.initialData) {
+    setValues({ ...props.initialData, password: '' })
+  }
+})
+
 const fetchRoles = async () => {
-  const { data, error } = await useFetch('/api/roles')
-  if (data.value?.success) {
-    roles.value = data.value.data
+  try {
+    const res = await $fetch('/api/roles')
+    if (res.success) {
+      roles.value = res.data
+    }
+  } catch (err) {
+    console.error('Failed to fetch roles:', err)
+    toast.error('Failed to load roles')
   }
 }
 
 const onSubmit = handleSubmit(async (values) => {
   loading.value = true
+  error.value = null
   try {
-    const url = isEditMode.value ? `/api/staff/${props.initialData.id}` : '/api/staff'
-    const method = isEditMode.value ? 'put' : 'post'
+    const url = isEditMode.value
+      ? `/api/staff/${props.initialData.id}`
+      : '/api/staff'
+    const method = isEditMode.value ? 'PUT' : 'POST'
 
-    const { data, error } = await useFetch(url, {
+    const res = await $fetch(url, {
       method,
       body: values,
     })
 
-    if (data.value?.success) {
+    if (res.success) {
+      toast.success(isEditMode.value ? 'Staff updated' : 'Staff created')
       emit('success')
     } else {
-      throw new Error(error.value?.statusMessage || 'Something went wrong')
+      throw new Error(res.message || 'Something went wrong')
     }
   } catch (err) {
     error.value = err.message
+    toast.error(error.value)
     console.error('Error:', err)
   } finally {
     loading.value = false
   }
 })
-
-onMounted(fetchRoles)
 </script>
 
 <template>
@@ -114,7 +131,7 @@ onMounted(fetchRoles)
         <select v-model="role_id" class="form-select w-full">
           <option disabled value="">Select Role</option>
           <option v-for="role in roles" :key="role.id" :value="role.id">
-            {{ role.name }}
+            {{ role.name }} ({{ role.email }})
           </option>
         </select>
         <p class="text-red-500 text-sm mt-1">{{ roleError }}</p>
@@ -128,8 +145,18 @@ onMounted(fetchRoles)
     </div>
 
     <div class="flex justify-end gap-3 mt-6">
-      <button type="button" @click="emit('cancel')" class="px-4 py-2 border rounded hover:bg-gray-100">Cancel</button>
-      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" :disabled="loading">
+      <button
+        type="button"
+        @click="emit('cancel')"
+        class="px-4 py-2 border rounded hover:bg-gray-100"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        :disabled="loading"
+      >
         {{ loading ? 'Saving...' : 'Save' }}
       </button>
     </div>
@@ -137,7 +164,8 @@ onMounted(fetchRoles)
 </template>
 
 <style scoped>
-.form-input, .form-select {
+.form-input,
+.form-select {
   @apply border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring focus:border-blue-300;
 }
 </style>
